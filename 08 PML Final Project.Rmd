@@ -1,0 +1,130 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Edgar Hamon"
+date: "September/2015"
+output: html_document
+---
+
+## Executive Summary
+The purpose of this project is to present a Machine Learning prediction based on accelerometers data and to present the results to the peer students of the John Hopkins data science specialization at Coursera. 
+
+### Background 
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+### Exploratory Data Analysis
+
+First, lets set the R environment for the analysis
+
+```{r init,message=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+
+rm(list = ls())
+```
+
+#### Downloading & reading data
+This portion of code assumes you will store the data files in the current working directory and does not validate if the files already exist. *Note:* code for downloading processing commented out.
+
+```{r download,message=FALSE, warning=FALSE}
+# trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+# testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# download.file(trainUrl, destfile="pml-training.csv", method="auto")
+# download.file(testUrl, destfile="pml-testing.csv", method="auto")
+
+Dtrain <- read.csv("pml-training.csv")
+Dtest  <- read.csv("pml-testing.csv")
+```
+
+#### Data Analysis and cleaning
+
+```{r data}
+dim(Dtrain)
+dim(Dtest)
+# summary(Dtrain)
+# str(Dtrain)
+```
+
+We have 19622 observations and 160 variables in the training dataset, and 20 observations and 160 variables in the test data set.
+
+Also, using "summary"" and "str"" functions we can see there are a lot of variables with NA's and many numeric variables load as factors due to "Div/0" text contained in the variable.
+*note:* Summary and str functions are commented out in the code to save report space.
+
+We are going to remove NA's columns and also to remove near zero variables. We apply the cleaning to both, the training and the test datesets
+
+```{r clean,message=FALSE, warning=FALSE}
+Dtemp <- Dtrain[, colSums(is.na(Dtrain)) == 0] ## eliminates columns with NAs
+trainnzv <- nearZeroVar(Dtemp, saveMetrics=FALSE)
+Dtrain <- Dtemp[-trainnzv]   ## eliminates columns with near zero value
+Dtrain <- Dtrain[-1]      ## Remove 1st column
+### repeat same cleaning in test dataset
+Dtemp <- Dtest[, colSums(is.na(Dtest)) == 0]
+testnzv <- nearZeroVar(Dtemp, saveMetrics=FALSE)
+Dtest <- Dtemp[-testnzv]   
+Dtest <- Dtest[-1]      
+dim(Dtrain)
+dim(Dtest)
+
+```
+
+As a result, now we have a training dataset with 19622 observations and 58 variables. Train dataset has now 20 observations and 58 variables. (Instead of 160 variables we had originally)
+
+
+### Prediction model
+
+We can split the cleaned training set into a pure training data set (70%) and a verification data set (30%). 
+
+```{r split}
+set.seed(1702) # For reproducibile purposes
+inTrain <- createDataPartition(Dtrain$classe, p=0.70, list=F)
+trainData <- Dtrain[inTrain, ]
+veriData <- Dtrain[-inTrain, ]
+```
+
+Based on various tests with this dataset and also based on Course lectures, we choose to fit a predictive model for activity recognition and prediction using Random Forest algorithm because:
+
+- It is capable to select automatically important variables
+- It can to correlate covariates and outliers
+
+We will use 8-fold cross validation for the algorithm and we will have 280 tree nodes.(These numbers were selected based on experimentations and trial & errors to find the optimal output)
+
+```{r modeling}
+control <- trainControl(method="cv", 8)
+model <- train(classe ~ ., data=trainData, method="rf", trControl=control, ntree=280)
+model
+```
+
+Once we have the model, we estimate the performance of the model on the verification dataset.
+
+```{r veri}
+prediction <- predict(model, veriData)
+confusionMatrix(veriData$classe, prediction)
+accur <- postResample(prediction, veriData$classe)
+accur
+model$finalModel
+```
+
+The estimated accuracy of the model is 99.8% and the estimated error is 0.06%.
+
+
+### Predicting for Test Dataset
+
+Now, we apply the model fitted above, to the original testing dataset (Taken from original data source). *Note:* problem_id column is removed first.
+
+Not showing the final results here, since it will contain the answers for the second part of the course project
+
+```{r apply}
+final <- predict(model, Dtest[, -length(names(Dtest))])
+varImp(model)
+```
